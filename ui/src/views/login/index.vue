@@ -1,6 +1,6 @@
 <template>
   <login-layout v-loading="loading">
-    <LoginContainer subTitle="欢迎使用 MaxKB 智能知识库">
+    <LoginContainer subTitle="欢迎使用 DataDoc 智能知识库">
       <h2 class="mb-24">普通登录</h2>
       <el-form
         class="login-form"

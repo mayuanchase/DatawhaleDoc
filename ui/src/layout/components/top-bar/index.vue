@@ -3,7 +3,7 @@
   <div class="top-bar-container border-b flex-between">
     <div class="flex-center h-full">
       <div class="app-title-container flex-center cursor" @click="router.push('/')">
-        <div class="app-title-icon"></div>
+<!--        <div class="app-title-icon"></div>-->
         <div class="app-title-text app-logo-font ml-4">
           {{ defaultTitle }}
         </div>
@@ -11,7 +11,7 @@
       <TopMenu></TopMenu>
     </div>
     <div class="flex-center avatar">
-      <el-tooltip effect="dark" :content="$t('layout.topbar.github')" placement="top">
+      <!-- <el-tooltip effect="dark" :content="$t('layout.topbar.github')" placement="top">
         <AppIcon
           iconName="app-github"
           class="cursor color-secondary mr-8 ml-8"
@@ -34,7 +34,7 @@
           style="font-size: 20px"
           @click="toUrl('https://bbs.fit2cloud.com/c/mk/11')"
         ></AppIcon>
-      </el-tooltip>
+      </el-tooltip> -->
       <el-dropdown v-if="false" trigger="click" type="primary">
         <template #dropdown>
           <el-dropdown-menu>
@@ -85,7 +85,7 @@ function toUrl(url: string) {
     margin-right: 45px;
 
     .app-title-icon {
-      background-image: url('@/assets/logo.png');
+      background-image: url('https://www.datawhale.club/assets/logo-CEMamQ57.png');
       background-size: 100% 100%;
       width: 35px;
       height: 35px;

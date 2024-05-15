@@ -2,7 +2,7 @@
   <div class="login-form-container">
     <div class="login-title">
       <div class="title flex-center mb-8">
-        <div class="logo mr-4"></div>
+<!--        <div class="logo mr-4"></div>-->
         <div class="app-logo-font">{{ title || defaultTitle }}</div>
       </div>
       <div class="sub-title text-center" v-if="subTitle">

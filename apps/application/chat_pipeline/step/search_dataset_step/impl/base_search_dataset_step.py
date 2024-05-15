@@ -19,25 +19,69 @@ from common.util.file_util import get_file_content
 from dataset.models import Paragraph
 from embedding.models import SearchMode
 from smartdoc.conf import PROJECT_DIR
+import logging
+from typing import List
 
 
 class BaseSearchDatasetStep(ISearchDatasetStep):
 
-    def execute(self, problem_text: str, dataset_id_list: list[str], exclude_document_id_list: list[str],
-                exclude_paragraph_id_list: list[str], top_n: int, similarity: float, padding_problem_text: str = None,
-                search_mode: str = None,
-                **kwargs) -> List[ParagraphPipelineModel]:
-        exec_problem_text = padding_problem_text if padding_problem_text is not None else problem_text
-        embedding_model = EmbeddingModel.get_embedding_model()
-        embedding_value = embedding_model.embed_query(exec_problem_text)
-        vector = VectorStore.get_embedding_vector()
-        embedding_list = vector.query(exec_problem_text, embedding_value, dataset_id_list, exclude_document_id_list,
-                                      exclude_paragraph_id_list, True, top_n, similarity, SearchMode(search_mode))
-        if embedding_list is None:
+    def execute(self, problem_text: str, dataset_id_list: List[str], exclude_document_id_list: List[str],
+                exclude_paragraph_id_list: List[str], top_n: int, similarity: float, padding_problem_text: str = None,
+                search_mode: str = None, **kwargs) -> List['ParagraphPipelineModel']:
+        """
+        Execute the query on the vector database.
+
+        :param problem_text: The query text.
+        :param dataset_id_list: List of dataset IDs to include in the query.
+        :param exclude_document_id_list: List of document IDs to exclude from the query.
+        :param exclude_paragraph_id_list: List of paragraph IDs to exclude from the query.
+        :param top_n: Number of top results to return.
+        :param similarity: Similarity threshold for filtering results.
+        :param padding_problem_text: Optional padded query text.
+        :param search_mode: Mode of search to be used.
+        :param kwargs: Additional keyword arguments.
+        :return: List of processed paragraphs.
+        """
+        exec_problem_text = padding_problem_text if padding_problem_text else problem_text
+
+        try:
+            # Get the embedding model and embed the query text
+            embedding_model = EmbeddingModel.get_embedding_model()
+            embedding_value = embedding_model.embed_query(exec_problem_text)
+        except Exception as e:
+            logging.error(f"Error embedding query text: {e}")
             return []
-        paragraph_list = self.list_paragraph(embedding_list, vector)
-        result = [self.reset_paragraph(paragraph, embedding_list) for paragraph in paragraph_list]
+
+        try:
+            # Retrieve the embedding vector from the vector store
+            vector = VectorStore.get_embedding_vector()
+            embedding_list = vector.query(exec_problem_text, embedding_value, dataset_id_list, exclude_document_id_list,
+                                          exclude_paragraph_id_list, True, top_n, similarity, SearchMode(search_mode))
+        except Exception as e:
+            logging.error(f"Error querying the vector store: {e}")
+            return []
+
+        if embedding_list is None:
+            logging.info("No embeddings found for the given query.")
+            return []
+
+        try:
+            # Retrieve and process the paragraphs based on the embedding list
+            paragraph_list = self.list_paragraph(embedding_list, vector)
+            result = [self.reset_paragraph(paragraph, embedding_list) for paragraph in paragraph_list]
+        except Exception as e:
+            logging.error(f"Error processing paragraphs: {e}")
+            return []
+
         return result
+
+    def list_paragraph(self, embedding_list, vector):
+        # Implement your method to list paragraphs based on embedding_list and vector
+        pass
+
+    def reset_paragraph(self, paragraph, embedding_list):
+        # Implement your method to reset a paragraph based on the embedding list
+        pass
 
     @staticmethod
     def reset_paragraph(paragraph: Dict, embedding_list: List) -> ParagraphPipelineModel:

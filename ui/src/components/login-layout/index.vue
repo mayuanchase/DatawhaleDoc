@@ -32,7 +32,7 @@ defineOptions({ name: 'LoginLayout' })
   height: 100vh;
 
   .login-image {
-    background: url(@/assets/login.jpg) no-repeat center;
+    background: url(@/assets/back.png) no-repeat center;
     background-size: cover;
     width: 100%;
     height: 100%;
