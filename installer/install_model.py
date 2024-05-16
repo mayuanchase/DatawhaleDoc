@@ -50,7 +50,7 @@ model_config = [
     },
     {
         'download_params': {
-            'urls': ["https://www.modelscope.cn/models/Jerry0/text2vec-base-chinese/files"],
+            'urls': ["https://huggingface.co/shibing624/text2vec-base-chinese/tree/main"],
             'file_save_paths': [os.path.join(prefix_dir, 'embedding',"shibing624_text2vec-base-chinese")]
         },
         'download_function': hg.get_batch_data
