@@ -1,11 +1,11 @@
-FROM ghcr.io/1panel-dev/maxkb-vector-model:v1.0.1 as vector-model
+FROM vector-model as vector-model
 FROM node:18-alpine3.18 as web-build
 COPY ui ui
 RUN cd ui && \
     npm install && \
     npm run build && \
     rm -rf ./node_modules
-FROM ghcr.io/1panel-dev/maxkb-python-pg:python3.11-pg15.6 as stage-build
+FROM python-pg as stage-build
 
 ARG DEPENDENCIES="                    \
         python3-pip"
@@ -17,7 +17,7 @@ RUN apt-get update && \
 
 COPY . /opt/maxkb/app
 RUN mkdir -p /opt/maxkb/app /opt/maxkb/model /opt/maxkb/conf && \
-    cp -f /opt/maxkb/app/installer/config.yaml /opt/maxkb/conf && \
+#    cp -f installer/config.yaml /opt/maxkb/conf && \
     rm -rf /opt/maxkb/app/ui
 COPY --from=web-build ui /opt/maxkb/app/ui
 WORKDIR /opt/maxkb/app
@@ -25,10 +25,9 @@ RUN python3 -m venv /opt/py3 && \
     pip install poetry --break-system-packages && \
     poetry config virtualenvs.create false && \
     . /opt/py3/bin/activate && \
-    if [ "$(uname -m)" = "x86_64" ]; then sed -i 's/^torch.*/torch = {version = "^2.2.1+cpu", source = "pytorch"}/g' pyproject.toml; fi && \
     poetry install
 
-FROM ghcr.io/1panel-dev/maxkb-python-pg:python3.11-pg15.6
+FROM python-pg
 ARG DOCKER_IMAGE_TAG=dev \
     BUILD_AT \
     GITHUB_COMMIT
