@@ -22,6 +22,7 @@ from application.chat_pipeline.step.generate_human_message_step.impl.base_genera
     BaseGenerateHumanMessageStep
 from application.chat_pipeline.step.reset_problem_step.impl.base_reset_problem_step import BaseResetProblemStep
 from application.chat_pipeline.step.search_dataset_step.impl.base_search_dataset_step import BaseSearchDatasetStep
+from application.chat_pipeline.step.search_wechat_step.impl.base_search_wechat_step import BaseSearchWechatStep
 from application.models import ChatRecord, Chat, Application, ApplicationDatasetMapping
 from application.models.api_key_model import ApplicationPublicAccessClient, ApplicationAccessToken
 from common.constants.authentication_type import AuthenticationType
@@ -92,6 +93,12 @@ class ChatInfo:
         return {**params, 'problem_text': problem_text, 'post_response_handler': post_response_handler,
                 'exclude_paragraph_id_list': exclude_paragraph_id_list, 'stream': stream, 'client_id': client_id,
                 'client_type': client_type}
+    def to_pipeline_manage_params_wechat(self, problem_text: str, post_response_handler: PostResponseHandler,
+                                  exclude_paragraph_id_list, client_id: str, client_type, stream=True, wechat_name=None):
+        params = self.to_base_pipeline_manage_params()
+        return {**params, 'problem_text': problem_text, 'post_response_handler': post_response_handler,
+                'exclude_paragraph_id_list': exclude_paragraph_id_list, 'stream': stream, 'client_id': client_id,
+                'client_type': client_type, 'wechat_name': wechat_name}
 
     def append_chat_record(self, chat_record: ChatRecord, client_id=None):
         # 存入缓存中
@@ -207,6 +214,112 @@ class ChatMessageSerializer(serializers.Serializer):
         # 构建运行参数
         params = chat_info.to_pipeline_manage_params(message, get_post_handler(chat_info), exclude_paragraph_id_list,
                                                      client_id, client_type, stream)
+        # 运行流水线作业
+        pipeline_message.run(params)
+        return pipeline_message.context['chat_result']
+
+    @staticmethod
+    def re_open_chat(chat_id: str):
+        chat = QuerySet(Chat).filter(id=chat_id).first()
+        if chat is None:
+            raise AppApiException(500, "会话不存在")
+        application = QuerySet(Application).filter(id=chat.application_id).first()
+        if application is None:
+            raise AppApiException(500, "应用不存在")
+        model = QuerySet(Model).filter(id=application.model_id).first()
+        chat_model = None
+        if model is not None:
+            # 对话模型
+            chat_model = ModelProvideConstants[model.provider].value.get_model(model.model_type, model.model_name,
+                                                                               json.loads(
+                                                                                   rsa_long_decrypt(model.credential)),
+                                                                               streaming=True)
+        # 数据集id列表
+        dataset_id_list = [str(row.dataset_id) for row in
+                           QuerySet(ApplicationDatasetMapping).filter(
+                               application_id=application.id)]
+
+        # 需要排除的文档
+        exclude_document_id_list = [str(document.id) for document in
+                                    QuerySet(Document).filter(
+                                        dataset_id__in=dataset_id_list,
+                                        is_active=False)]
+        return ChatInfo(chat_id, chat_model, dataset_id_list, exclude_document_id_list, application)
+
+
+class ChatWechatMessageSerializer(serializers.Serializer):
+    chat_id = serializers.UUIDField(required=True, error_messages=ErrMessage.char("对话id"))
+    message = serializers.CharField(required=True, error_messages=ErrMessage.char("用户问题"), max_length=1024)
+    stream = serializers.BooleanField(required=True, error_messages=ErrMessage.char("是否流式回答"))
+    re_chat = serializers.BooleanField(required=True, error_messages=ErrMessage.char("是否重新回答"))
+    application_id = serializers.UUIDField(required=False, allow_null=True, error_messages=ErrMessage.uuid("应用id"))
+    client_id = serializers.CharField(required=True, error_messages=ErrMessage.char("客户端id"))
+    client_type = serializers.CharField(required=True, error_messages=ErrMessage.char("客户端类型"))
+    wechat_name = serializers.CharField(required=True, error_messages=ErrMessage.char("公众号名称"))
+
+    def is_valid(self, *, raise_exception=False):
+        super().is_valid(raise_exception=True)
+        if self.data.get('client_type') == AuthenticationType.APPLICATION_ACCESS_TOKEN.value:
+            access_client = QuerySet(ApplicationPublicAccessClient).filter(id=self.data.get('client_id')).first()
+            if access_client is None:
+                access_client = ApplicationPublicAccessClient(id=self.data.get('client_id'),
+                                                              application_id=self.data.get('application_id'),
+                                                              access_num=0,
+                                                              intraday_access_num=0)
+                access_client.save()
+
+            application_access_token = QuerySet(ApplicationAccessToken).filter(
+                application_id=self.data.get('application_id')).first()
+            if application_access_token.access_num <= access_client.intraday_access_num:
+                raise AppChatNumOutOfBoundsFailed(1002, "访问次数超过今日访问量")
+        chat_id = self.data.get('chat_id')
+        chat_info: ChatInfo = chat_cache.get(chat_id)
+        if chat_info is None:
+            chat_info = self.re_open_chat(chat_id)
+            chat_cache.set(chat_id,
+                           chat_info, timeout=60 * 30)
+        model = chat_info.application.model
+        if model is None:
+            return chat_info
+        model = QuerySet(Model).filter(id=model.id).first()
+        if model is None:
+            return chat_info
+        if model.status == Status.ERROR:
+            raise AppApiException(500, "当前模型不可用")
+        if model.status == Status.DOWNLOAD:
+            raise AppApiException(500, "模型正在下载中,请稍后再发起对话")
+        return chat_info
+
+    def chat(self):
+        self.is_valid(raise_exception=True)
+        message = self.data.get('message')
+        re_chat = self.data.get('re_chat')
+        stream = self.data.get('stream')
+        client_id = self.data.get('client_id')
+        client_type = self.data.get('client_type')
+        wechat_name = self.data.get('wechat_name')
+        chat_info = self.is_valid(raise_exception=True)
+        pipeline_manage_builder = PipelineManage.builder()
+        # 如果开启了问题优化,则添加上问题优化步骤
+        if chat_info.application.problem_optimization:
+            pipeline_manage_builder.append_step(BaseResetProblemStep)
+        # 构建流水线管理器
+        pipeline_message = (pipeline_manage_builder.append_step(BaseSearchWechatStep)
+                            .append_step(BaseGenerateHumanMessageStep)
+                            .append_step(BaseChatStep)
+                            .build())
+        exclude_paragraph_id_list = []
+        # 相同问题是否需要排除已经查询到的段落
+        if re_chat:
+            paragraph_id_list = flat_map(
+                [[paragraph.get('id') for paragraph in chat_record.details['search_step']['paragraph_list']] for
+                 chat_record in chat_info.chat_record_list if
+                 chat_record.problem_text == message and 'search_step' in chat_record.details and 'paragraph_list' in
+                 chat_record.details['search_step']])
+            exclude_paragraph_id_list = list(set(paragraph_id_list))
+        # 构建运行参数
+        params = chat_info.to_pipeline_manage_params_wechat(message, get_post_handler(chat_info), exclude_paragraph_id_list,
+                                                     client_id, client_type, stream, wechat_name)
         # 运行流水线作业
         pipeline_message.run(params)
         return pipeline_message.context['chat_result']

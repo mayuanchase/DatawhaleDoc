@@ -11,7 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.views import APIView
 
-from application.serializers.chat_message_serializers import ChatMessageSerializer
+from application.serializers.chat_message_serializers import ChatMessageSerializer, ChatWechatMessageSerializer
 from application.serializers.chat_serializers import ChatSerializers, ChatRecordSerializer
 from application.swagger_api.chat_api import ChatApi, VoteApi, ChatRecordApi, ImproveApi, ChatRecordImproveApi
 from common.auth import TokenAuth, has_permissions
@@ -91,15 +91,51 @@ class ChatView(APIView):
                                                            dynamic_tag=keywords.get('application_id'))])
         )
         def post(self, request: Request, chat_id: str):
-            return ChatMessageSerializer(data={'chat_id': chat_id, 'message': request.data.get('message'),
-                                               're_chat': (request.data.get(
-                                                   're_chat') if 're_chat' in request.data else False),
-                                               'stream': (request.data.get(
-                                                   'stream') if 'stream' in request.data else True),
-                                               'application_id': (request.auth.keywords.get(
-                                                   'application_id') if request.auth.client_type == AuthenticationType.APPLICATION_ACCESS_TOKEN.value else None),
-                                               'client_id': request.auth.client_id,
-                                               'client_type': request.auth.client_type}).chat()
+            # return ChatMessageSerializer(data={'chat_id': chat_id, 'message': request.data.get('message'),
+            #                                    're_chat': (request.data.get(
+            #                                        're_chat') if 're_chat' in request.data else False),
+            #                                    'stream': (request.data.get(
+            #                                        'stream') if 'stream' in request.data else True),
+            #                                    'application_id': (request.auth.keywords.get(
+            #                                        'application_id') if request.auth.client_type == AuthenticationType.APPLICATION_ACCESS_TOKEN.value else None),
+            #                                    'client_id': request.auth.client_id,
+            #                                    'client_type': request.auth.client_type}).chat()
+            return ChatWechatMessageSerializer(data={'chat_id': chat_id, 'message': request.data.get('message'),
+                                                     're_chat': (request.data.get(
+                                                         're_chat') if 're_chat' in request.data else False),
+                                                     'stream': (request.data.get(
+                                                         'stream') if 'stream' in request.data else True),
+                                                     'application_id': (request.auth.keywords.get(
+                                                         'application_id') if request.auth.client_type == AuthenticationType.APPLICATION_ACCESS_TOKEN.value else None),
+                                                     'client_id': request.auth.client_id,
+                                                     'client_type': request.auth.client_type,
+                                                     'wechat_name': 'Datawhale'}).chat()
+
+    class WechatMessage(APIView):
+        authentication_classes = [TokenAuth]
+
+        @action(methods=['POST'], detail=False)
+        @swagger_auto_schema(operation_summary="对话(引用微信公众号内容)",
+                             operation_id="对话(引用微信公众号内容)",
+                             request_body=ChatApi.get_request_body_api(),
+                             tags=["应用/会话"])
+        @has_permissions(
+            ViewPermission([RoleConstants.ADMIN, RoleConstants.USER, RoleConstants.APPLICATION_KEY,
+                            RoleConstants.APPLICATION_ACCESS_TOKEN],
+                           [lambda r, keywords: Permission(group=Group.APPLICATION, operate=Operate.USE,
+                                                           dynamic_tag=keywords.get('application_id'))])
+        )
+        def post(self, request: Request, chat_id: str):
+            return ChatWechatMessageSerializer(data={'chat_id': chat_id, 'message': request.data.get('message'),
+                                                     're_chat': (request.data.get(
+                                                         're_chat') if 're_chat' in request.data else False),
+                                                     'stream': (request.data.get(
+                                                         'stream') if 'stream' in request.data else True),
+                                                     'application_id': (request.auth.keywords.get(
+                                                         'application_id') if request.auth.client_type == AuthenticationType.APPLICATION_ACCESS_TOKEN.value else None),
+                                                     'client_id': request.auth.client_id,
+                                                     'client_type': request.auth.client_type,
+                                                     'wechat_name': request.data.get('wechat_name')}).chat()
 
     @action(methods=['GET'], detail=False)
     @swagger_auto_schema(operation_summary="获取对话列表",

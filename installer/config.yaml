@@ -9,8 +9,8 @@ EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
 
 # 数据库链接信息
 DB_NAME: postgres
-DB_HOST: 121.40.93.67
-DB_PORT: 8888
+DB_HOST: 127.0.0.1
+DB_PORT: 5432
 DB_USER: postgres
 DB_PASSWORD: 15946868847a
 DB_ENGINE: django.db.backends.postgresql_psycopg2
